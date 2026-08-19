@@ -38,3 +38,16 @@ output "kube_config_raw" {
   value       = azurerm_kubernetes_cluster.this.kube_config_raw
   sensitive   = true
 }
+
+output "node_pool_ids" {
+  description = "Additional node pools, keyed as supplied."
+  value       = { for k, v in azurerm_kubernetes_cluster_node_pool.this : k => v.id }
+}
+
+output "node_pool_names" {
+  description = "Names of all pools on the cluster, default first."
+  value = concat(
+    [azurerm_kubernetes_cluster.this.default_node_pool[0].name],
+    [for k in sort(keys(azurerm_kubernetes_cluster_node_pool.this)) : k]
+  )
+}

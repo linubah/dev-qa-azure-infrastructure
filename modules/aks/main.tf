@@ -22,26 +22,30 @@ resource "azurerm_kubernetes_cluster" "this" {
     authorized_ip_ranges = var.private_cluster_enabled ? null : var.authorized_ip_ranges
   }
 
+  # Azure requires exactly one default pool; it cannot be omitted or moved out.
   default_node_pool {
-    name                 = "system"
-    vm_size              = var.node_size
-    os_disk_size_gb      = var.node_os_disk_size_gb
-    vnet_subnet_id       = var.vnet_subnet_id
-    auto_scaling_enabled = var.auto_scaling_enabled
-    node_count           = var.node_count
-    min_count            = var.auto_scaling_enabled ? var.min_node_count : null
-    max_count            = var.auto_scaling_enabled ? var.max_node_count : null
+    name    = var.node_pool_default.name
+    vm_size = var.node_pool_default.vm_size
+    zones   = var.node_pool_default.zones
 
-    # Hardening: no public IPs on nodes, host-level OS patching left to AKS.
+    auto_scaling_enabled = var.node_pool_default.auto_scaling_enabled
+    node_count           = var.node_pool_default.node_count
+    min_count            = var.node_pool_default.auto_scaling_enabled ? var.node_pool_default.min_count : null
+    max_count            = var.node_pool_default.auto_scaling_enabled ? var.node_pool_default.max_count : null
+
+    os_disk_size_gb = var.node_pool_default.os_disk_size_gb
+    os_disk_type    = var.node_pool_default.os_disk_type
+    max_pods        = var.node_pool_default.max_pods
+    vnet_subnet_id  = var.node_pool_default.vnet_subnet_id
+
+    # Nodes stay off the public internet regardless of what the caller asks for.
     node_public_ip_enabled       = false
-    only_critical_addons_enabled = var.only_critical_addons_enabled
+    only_critical_addons_enabled = var.node_pool_default.only_critical_addons_enabled
+    host_encryption_enabled      = var.node_pool_default.host_encryption_enabled
     orchestrator_version         = var.kubernetes_version
-    max_pods                     = var.max_pods_per_node
-    host_encryption_enabled      = var.host_encryption_enabled
-    os_disk_type                 = var.os_disk_type
 
     upgrade_settings {
-      max_surge = "10%"
+      max_surge = var.node_pool_default.max_surge
     }
 
     tags = var.tags
@@ -97,6 +101,56 @@ resource "azurerm_kubernetes_cluster" "this" {
     ignore_changes = [
       kubernetes_version,
       default_node_pool[0].node_count,
+    ]
+  }
+}
+
+
+resource "azurerm_kubernetes_cluster_node_pool" "this" {
+  for_each = {
+    for k, v in var.additional_node_pools : k => v if v.enabled
+  }
+
+  kubernetes_cluster_id = azurerm_kubernetes_cluster.this.id
+  name                  = each.key
+
+  vm_size = each.value.vm_size
+  mode    = each.value.mode
+  os_type = each.value.os_type
+  os_sku  = each.value.os_sku
+  zones   = each.value.zones
+
+  auto_scaling_enabled = each.value.auto_scaling_enabled
+  node_count           = each.value.node_count
+  min_count            = each.value.auto_scaling_enabled ? each.value.min_count : null
+  max_count            = each.value.auto_scaling_enabled ? each.value.max_count : null
+
+  os_disk_size_gb = each.value.os_disk_size_gb
+  os_disk_type    = each.value.os_disk_type
+  max_pods        = each.value.max_pods
+
+  priority        = each.value.priority
+  eviction_policy = each.value.priority == "Spot" ? each.value.eviction_policy : null
+  spot_max_price  = each.value.priority == "Spot" ? each.value.spot_max_price : null
+
+  node_labels = each.value.node_labels
+  node_taints = each.value.node_taints
+
+  vnet_subnet_id          = each.value.vnet_subnet_id
+  host_encryption_enabled = each.value.host_encryption_enabled
+  fips_enabled            = each.value.fips_enabled
+  orchestrator_version    = each.value.orchestrator_version
+  node_public_ip_enabled  = false
+
+  upgrade_settings {
+    max_surge = each.value.max_surge
+  }
+
+  tags = var.tags
+
+  lifecycle {
+    ignore_changes = [
+      node_count,
     ]
   }
 }

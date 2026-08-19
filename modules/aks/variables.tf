@@ -41,55 +41,6 @@ variable "sku_tier" {
   }
 }
 
-# --- default node pool ---
-
-variable "node_count" {
-  description = "Node count when autoscaling is off, or the initial count when on."
-  type        = number
-  default     = 1
-
-  validation {
-    condition     = var.node_count >= 1 && var.node_count <= 100
-    error_message = "node_count must be between 1 and 100."
-  }
-}
-
-variable "node_size" {
-  description = "VM size for the default node pool."
-  type        = string
-  default     = "Standard_B2s"
-}
-
-variable "node_os_disk_size_gb" {
-  description = "OS disk size per node."
-  type        = number
-  default     = 32
-}
-
-variable "auto_scaling_enabled" {
-  description = "Enable cluster autoscaler on the default pool."
-  type        = bool
-  default     = false
-}
-
-variable "min_node_count" {
-  description = "Autoscaler floor. Required when auto_scaling_enabled."
-  type        = number
-  default     = null
-}
-
-variable "max_node_count" {
-  description = "Autoscaler ceiling. Required when auto_scaling_enabled."
-  type        = number
-  default     = null
-}
-
-variable "vnet_subnet_id" {
-  description = "Subnet for node NICs. null lets AKS manage its own VNet."
-  type        = string
-  default     = null
-}
-
 # --- network security ---
 
 variable "private_cluster_enabled" {
@@ -187,12 +138,6 @@ variable "workload_identity_enabled" {
   default     = true
 }
 
-variable "only_critical_addons_enabled" {
-  description = "Taint the system pool so it carries only control-plane addons. Needs a second user pool for workloads."
-  type        = bool
-  default     = false
-}
-
 variable "azure_policy_enabled" {
   description = "Gatekeeper add-on, so admission control is enforced in-cluster rather than only at plan time."
   type        = bool
@@ -228,26 +173,112 @@ variable "secret_rotation_interval" {
   default     = "2m"
 }
 
-variable "max_pods_per_node" {
-  description = "Pod density per node. null takes the plugin default (30 for Azure CNI)."
-  type        = number
-  default     = null
-}
+variable "node_pool_default" {
+  description = "Values for the default azurerm_kubernetes_cluster.default_node_pool."
+  type = object({
+    name       = optional(string, "system")
+    vm_size    = optional(string, "Standard_B2s")
+    node_count = optional(number, 1)
+    zones      = optional(list(string))
 
-variable "host_encryption_enabled" {
-  description = "Encrypt temp disks and caches at the host. Requires the EncryptionAtHost feature on the subscription."
-  type        = bool
-  default     = false
-}
+    auto_scaling_enabled = optional(bool, false)
+    min_count            = optional(number)
+    max_count            = optional(number)
 
-variable "os_disk_type" {
-  description = "Ephemeral is faster and free but is lost on reimage and needs a VM SKU with a big enough cache."
-  type        = string
-  default     = "Managed"
+    os_disk_size_gb = optional(number, 32)
+    os_disk_type    = optional(string, "Managed")
+    max_pods        = optional(number)
+
+    # Taints the pool so only system addons schedule here. ForceNew - decide up front.
+    only_critical_addons_enabled = optional(bool, false)
+
+    vnet_subnet_id          = optional(string)
+    host_encryption_enabled = optional(bool, false)
+    max_surge               = optional(string, "10%")
+  })
+  default = {}
 
   validation {
-    condition     = contains(["Managed", "Ephemeral"], var.os_disk_type)
+    condition     = can(regex("^[a-z][a-z0-9]{0,11}$", var.node_pool_default.name))
+    error_message = "Pool name must be lowercase alphanumeric, start with a letter, and be at most 12 characters."
+  }
+
+  validation {
+    condition     = !var.node_pool_default.auto_scaling_enabled || (var.node_pool_default.min_count != null && var.node_pool_default.max_count != null)
+    error_message = "auto_scaling_enabled requires both min_count and max_count."
+  }
+
+  validation {
+    condition     = var.node_pool_default.node_count >= 1
+    error_message = "node_count must be at least 1; Azure has no zero-node system pool."
+  }
+
+  validation {
+    condition     = contains(["Managed", "Ephemeral"], var.node_pool_default.os_disk_type)
     error_message = "os_disk_type must be Managed or Ephemeral."
+  }
+}
+
+variable "additional_node_pools" {
+  description = "Map with values for azurerm_kubernetes_cluster_node_pool"
+
+  type = map(object({
+    enabled = optional(bool, false)
+
+    vm_size    = string
+    node_count = optional(number, 1)
+    mode       = optional(string, "User")
+    os_type    = optional(string, "Linux")
+    os_sku     = optional(string)
+    zones      = optional(list(string))
+
+    auto_scaling_enabled = optional(bool, false)
+    min_count            = optional(number)
+    max_count            = optional(number)
+
+    os_disk_size_gb = optional(number, 32)
+    os_disk_type    = optional(string, "Managed")
+    max_pods        = optional(number)
+
+    priority        = optional(string, "Regular")
+    eviction_policy = optional(string)
+    spot_max_price  = optional(number)
+
+    node_labels = optional(map(string), {})
+    node_taints = optional(list(string), [])
+
+    vnet_subnet_id          = optional(string)
+    host_encryption_enabled = optional(bool, false)
+    fips_enabled            = optional(bool, false)
+    orchestrator_version    = optional(string)
+    max_surge               = optional(string, "10%")
+  }))
+  default = {}
+
+  validation {
+    condition     = alltrue([for p in var.additional_node_pools : contains(["User", "System"], p.mode) if p.enabled])
+    error_message = "mode must be User or System."
+  }
+
+  validation {
+    condition     = alltrue([for p in var.additional_node_pools : contains(["Regular", "Spot"], p.priority) if p.enabled])
+    error_message = "priority must be Regular or Spot."
+  }
+
+  validation {
+    # Azure requires Spot pools to be evictable and non-system.
+    condition     = alltrue([for p in var.additional_node_pools : p.priority != "Spot" || (p.eviction_policy != null && p.mode == "User") if p.enabled])
+    error_message = "Spot pools require eviction_policy (Delete or Deallocate) and mode User."
+  }
+
+  validation {
+    condition     = alltrue([for p in var.additional_node_pools : !p.auto_scaling_enabled || (p.min_count != null && p.max_count != null) if p.enabled])
+    error_message = "Pools with auto_scaling_enabled must set both min_count and max_count."
+  }
+
+  validation {
+    condition     = alltrue([for k, p in var.additional_node_pools : can(regex("^[a-z][a-z0-9]{0,11}$", k))])
+    error_message = "Pool names must be lowercase alphanumeric, start with a letter, and be at most 12 characters."
   }
 }
 

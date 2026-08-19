@@ -27,7 +27,7 @@ provider "azurerm" {
     }
   }
 
-  subscription_id = var.subscription_id
-  use_oidc        = var.use_oidc
+  subscription_id     = var.subscription_id
+  use_oidc            = var.use_oidc
   storage_use_azuread = true
 }

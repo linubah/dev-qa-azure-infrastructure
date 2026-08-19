@@ -1,5 +1,5 @@
 
-name: 
+name: terraform iac
 
 on:
   pull_request:

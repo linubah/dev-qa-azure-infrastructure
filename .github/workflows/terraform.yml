@@ -1,0 +1,196 @@
+# Reusable Terraform pipeline, called by each env/* branch.
+#
+# Living on main means one copy: env branches are orphans with no shared history,
+# so a workflow duplicated into each would drift immediately.
+
+name: terraform
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: GitHub Environment to deploy to. Also selects the OIDC identity.
+        type: string
+        required: true
+      working_directory:
+        type: string
+        default: environment
+      var_file:
+        description: tfvars file, relative to working_directory.
+        type: string
+        required: true
+      apply:
+        description: Run apply after plan. Callers pass false for pull requests.
+        type: boolean
+        default: false
+      plan_client_id:
+        description: >-
+          Client id the plan job authenticates as. Repository-level, because plan is
+          not bound to an environment and so cannot read environment variables.
+        type: string
+        required: true
+      terraform_version:
+        type: string
+        default: 1.14.3
+
+# No secrets: the runner exchanges a signed OIDC token for an Azure one.
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  plan:
+    name: plan (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+
+    # Deliberately NOT bound to an environment. required_reviewers fires on any job
+    # that is, so a gated plan would mean approving before you can see what you are
+    # approving. Plan changes nothing, so only apply is gated.
+    #
+    # Its OIDC token therefore matches a branch or pull_request subject instead, and
+    # client id comes from a repository variable rather than an environment one.
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    outputs:
+      exitcode: ${{ steps.plan.outputs.exitcode }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ inputs.plan_client_id }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: fmt
+        run: terraform fmt -check -recursive
+
+      - name: init
+        run: terraform init -backend-config=backend.hcl -input=false
+
+      - name: validate
+        run: terraform validate
+
+      # -detailed-exitcode: 0 no changes, 1 error, 2 changes pending.
+      - name: plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -no-color -lock-timeout=5m \
+            -var-file="${{ inputs.var_file }}" \
+            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
+            -var="use_oidc=true" \
+            -detailed-exitcode -out=tfplan | tee plan.txt
+          code=${PIPESTATUS[0]}
+          echo "exitcode=$code" >> "$GITHUB_OUTPUT"
+          [ "$code" -eq 1 ] && exit 1 || exit 0
+
+      # The binary plan, not a re-plan: apply then does exactly what was reviewed.
+      - uses: actions/upload-artifact@v4
+        if: steps.plan.outputs.exitcode == '2'
+        with:
+          name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
+          path: ${{ inputs.working_directory }}/tfplan
+          retention-days: 5
+
+      - name: summary
+        run: |
+          {
+            echo "### Terraform plan — \`${{ inputs.environment }}\`"
+            echo
+            case "${{ steps.plan.outputs.exitcode }}" in
+              0) echo "No changes." ;;
+              2) echo '```terraform'; tail -c 60000 plan.txt; echo '```' ;;
+            esac
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: comment on pr
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        env:
+          PLAN_EXIT: ${{ steps.plan.outputs.exitcode }}
+        with:
+          script: |
+            const fs = require('fs');
+            const dir = '${{ inputs.working_directory }}';
+            const body = process.env.PLAN_EXIT === '2'
+              ? '### Terraform plan — `${{ inputs.environment }}`\n\n```terraform\n'
+                + fs.readFileSync(`${dir}/plan.txt`, 'utf8').slice(-60000) + '\n```'
+              : '### Terraform plan — `${{ inputs.environment }}`\n\nNo changes.';
+
+            // Update one comment per environment rather than adding a new one each push.
+            const marker = '### Terraform plan — `${{ inputs.environment }}`';
+            const {data: comments} = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number,
+            });
+            const mine = comments.find(c =>
+              c.user.type === 'Bot' && c.body.startsWith(marker));
+
+            mine
+              ? await github.rest.issues.updateComment({...context.repo, comment_id: mine.id, body})
+              : await github.rest.issues.createComment({...context.repo, issue_number: context.issue.number, body});
+
+  apply:
+    name: apply (${{ inputs.environment }})
+    needs: plan
+    if: inputs.apply && needs.plan.outputs.exitcode == '2'
+    runs-on: ubuntu-latest
+
+    # Required reviewers on this environment gate here. The run pauses until a
+    # human approves, whatever triggered it.
+    environment: ${{ inputs.environment }}
+
+    # Two applies must never touch one state file at the same time.
+    concurrency:
+      group: terraform-apply-${{ inputs.environment }}
+      cancel-in-progress: false
+
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ inputs.terraform_version }}
+          terraform_wrapper: false
+
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: init
+        run: terraform init -backend-config=backend.hcl -input=false
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
+          path: ${{ inputs.working_directory }}
+
+      # Applying the saved plan, so a change merged between plan and apply cannot
+      # slip in unreviewed - stale plan fails instead.
+      - name: apply
+        run: terraform apply -input=false -no-color -lock-timeout=5m -auto-approve tfplan
+
+      - name: outputs
+        run: |
+          {
+            echo "### Applied — \`${{ inputs.environment }}\`"
+            echo '```json'
+            terraform output -json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

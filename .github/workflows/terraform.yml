@@ -1,8 +1,3 @@
-# Reusable Terraform pipeline, called by each env/* branch.
-#
-# Living on main means one copy: env branches are orphans with no shared history,
-# so a workflow duplicated into each would drift immediately.
-
 name: terraform
 
 on:
@@ -55,18 +50,26 @@ jobs:
       run:
         working-directory: ${{ inputs.working_directory }}
 
+    # The provider authenticates on its own rather than borrowing the az CLI session
+    # azure/login leaves behind - that session is a side effect, not a contract.
+    env:
+      ARM_USE_OIDC: true
+      ARM_CLIENT_ID: ${{ inputs.plan_client_id }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
     outputs:
       exitcode: ${{ steps.plan.outputs.exitcode }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ inputs.terraform_version }}
           terraform_wrapper: false
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ inputs.plan_client_id }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -81,7 +84,6 @@ jobs:
       - name: validate
         run: terraform validate
 
-      # -detailed-exitcode: 0 no changes, 1 error, 2 changes pending.
       - name: plan
         id: plan
         run: |
@@ -89,14 +91,12 @@ jobs:
           terraform plan -input=false -no-color -lock-timeout=5m \
             -var-file="${{ inputs.var_file }}" \
             -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
-            -var="use_oidc=true" \
             -detailed-exitcode -out=tfplan | tee plan.txt
           code=${PIPESTATUS[0]}
           echo "exitcode=$code" >> "$GITHUB_OUTPUT"
           [ "$code" -eq 1 ] && exit 1 || exit 0
 
-      # The binary plan, not a re-plan: apply then does exactly what was reviewed.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: steps.plan.outputs.exitcode == '2'
         with:
           name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
@@ -116,7 +116,7 @@ jobs:
 
       - name: comment on pr
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PLAN_EXIT: ${{ steps.plan.outputs.exitcode }}
         with:
@@ -159,15 +159,21 @@ jobs:
       run:
         working-directory: ${{ inputs.working_directory }}
 
-    steps:
-      - uses: actions/checkout@v4
+    env:
+      ARM_USE_OIDC: true
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - uses: hashicorp/setup-terraform@v3
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: ${{ inputs.terraform_version }}
           terraform_wrapper: false
 
-      - uses: azure/login@v2
+      - uses: azure/login@v3
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -176,7 +182,7 @@ jobs:
       - name: init
         run: terraform init -backend-config=backend.hcl -input=false
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: tfplan-${{ inputs.environment }}-${{ github.run_id }}
           path: ${{ inputs.working_directory }}

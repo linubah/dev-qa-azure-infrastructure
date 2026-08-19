@@ -4,7 +4,7 @@ variable "subscription_id" {
 }
 
 variable "use_oidc" {
-  description = "Authenticate via workload identity federation. Leave false for a local az login."
+  description = "Use workload identity federation. False for a local az login."
   type        = bool
   default     = false
 }
@@ -12,13 +12,13 @@ variable "use_oidc" {
 # --- naming ---
 
 variable "brand" {
-  description = "Organisation short code, used as the first segment of every name."
+  description = "Organisation short code."
   type        = string
   default     = "2ops"
 }
 
 variable "environment" {
-  description = "Environment name. Must match the GitHub Environment this branch deploys to."
+  description = "Environment name. Must match the GitHub Environment."
   type        = string
   default     = "dev"
 }
@@ -30,7 +30,7 @@ variable "location" {
 }
 
 variable "location_code" {
-  description = "Short region code used inside resource names."
+  description = "Short region code used in resource names."
   type        = string
   default     = "euw1"
 }
@@ -42,7 +42,7 @@ variable "workload" {
 }
 
 variable "unique_suffix" {
-  description = "Random suffix on globally unique names. Keep true while the environment is disposable."
+  description = "Random suffix on globally unique names, so a destroyed env can be recreated at once."
   type        = bool
   default     = true
 }
@@ -50,7 +50,7 @@ variable "unique_suffix" {
 # --- storage account ---
 
 variable "storage_replication_type" {
-  description = "Redundancy for the storage account. LRS is the cheapest and enough for dev."
+  description = "Redundancy. LRS is cheapest and enough for dev."
   type        = string
   default     = "LRS"
 }
@@ -64,7 +64,7 @@ variable "storage_containers" {
 }
 
 variable "allowed_ip_ranges" {
-  description = "Public IPs allowed through resource firewalls. null leaves them open, which is what a demo needs."
+  description = "Public IPs allowed through resource firewalls. null leaves them open."
   type        = list(string)
   default     = null
 }
@@ -72,10 +72,7 @@ variable "allowed_ip_ranges" {
 # --- aks (optional) ---
 
 variable "aks_enabled" {
-  description = <<-EOT
-    Deploy the AKS cluster. Off by default: a free subscription's regional vCPU quota
-    is usually 4, which one B2s node fits but little else does.
-  EOT
+  description = "Deploy the AKS cluster. Off by default - a free subscription's 4 vCPU quota fits one node."
   type        = bool
   default     = false
 }
@@ -93,14 +90,7 @@ variable "aks_node_size" {
 }
 
 variable "aks_authorized_ip_ranges" {
-  description = <<-EOT
-    CIDRs allowed to reach the public API server. null leaves it open to the whole
-    internet, which is why the default here is an empty-by-intent placeholder: set
-    your own egress IP, or the GitHub runner ranges, before enabling AKS.
-
-    Ignored when aks_private_cluster is true - a private cluster has no public
-    endpoint left to restrict.
-  EOT
+  description = "CIDRs allowed to reach the API server. null leaves it open to the internet."
   type        = list(string)
   default     = null
 
@@ -111,33 +101,25 @@ variable "aks_authorized_ip_ranges" {
 }
 
 variable "aks_private_cluster" {
-  description = <<-EOT
-    Give the API server a private endpoint and no public IP at all. Strongest option,
-    but a GitHub-hosted runner cannot reach it - that needs a self-hosted runner in
-    the VNet, a VPN, or a private endpoint. Left false so the demo pipeline works.
-  EOT
+  description = "Private API server endpoint. GitHub-hosted runners cannot reach one."
   type        = bool
   default     = false
 }
 
 variable "aks_network_policy" {
-  description = "Pod-to-pod traffic control. Without a policy engine every pod can reach every other pod."
+  description = "Pod-to-pod traffic control. Without it every pod reaches every pod."
   type        = string
   default     = "calico"
 }
 
 variable "aks_local_account_disabled" {
-  description = <<-EOT
-    Removes the static cluster-admin certificate that bypasses Entra ID, RBAC and MFA.
-    Keep true: that credential never expires and appears in audit logs as "masterclient"
-    rather than a person.
-  EOT
+  description = "Removes the static cluster-admin certificate that bypasses Entra ID and MFA."
   type        = bool
   default     = true
 }
 
 variable "aks_upgrade_channel" {
-  description = "Automatic patch cadence, so the cluster does not sit on a version with known CVEs."
+  description = "Automatic patch cadence, so the cluster does not sit on known CVEs."
   type        = string
   default     = "patch"
 }
@@ -149,7 +131,7 @@ variable "aks_admin_group_object_ids" {
 }
 
 variable "extra_tags" {
-  description = "Tags merged on top of the ones the naming module produces."
+  description = "Tags merged on top of the naming module's."
   type        = map(string)
   default     = {}
 }

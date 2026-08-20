@@ -9,7 +9,7 @@ storage_containers = {
 }
 
 #
-# AKS 
+# AKS
 #
 aks_enabled = false
 

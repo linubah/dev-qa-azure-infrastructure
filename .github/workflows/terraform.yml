@@ -90,7 +90,6 @@ jobs:
           set +e
           terraform plan -input=false -no-color -lock-timeout=5m \
             -var-file="${{ inputs.var_file }}" \
-            -var="subscription_id=${{ vars.AZURE_SUBSCRIPTION_ID }}" \
             -detailed-exitcode -out=tfplan | tee plan.txt
           code=${PIPESTATUS[0]}
           echo "exitcode=$code" >> "$GITHUB_OUTPUT"

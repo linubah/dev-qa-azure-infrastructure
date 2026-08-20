@@ -2,8 +2,14 @@ name: terraform iac
 
 on:
   pull_request:
+    paths:
+      - 'environment/**'
+      - '.github/workflows/**'
   push:
     branches: [env/qa]
+    paths:
+      - 'environment/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:

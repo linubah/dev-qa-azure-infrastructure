@@ -13,6 +13,11 @@ output "key_vault" {
   value       = local.names.key_vault
 }
 
+output "vnet" {
+  description = "Virtual network name."
+  value       = local.names.vnet
+}
+
 output "aks" {
   description = "AKS cluster name."
   value       = local.names.aks

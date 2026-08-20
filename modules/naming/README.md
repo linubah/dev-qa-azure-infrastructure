@@ -18,6 +18,7 @@ Prefix per resource type follows the Azure CAF abbreviations: `rg-`, `st`, `kv-`
 | storage account | `st2opsdeveuw1corevcem` | 24, no hyphens, lowercase |
 | key vault | `kv-2ops-dev-euw1-co-vcem` | 24 |
 | aks | `aks-2ops-dev-euw1-core` | 63 |
+| vnet | `vnet-2ops-dev-euw1-core` | 64 |
 
 ## Truncation
 
@@ -73,4 +74,5 @@ module "resource_group" {
 | `storage_account` | Storage account name. |
 | `key_vault` | Key Vault name. |
 | `aks` | AKS cluster name. |
+| `vnet` | Virtual network name. |
 | `tags` | Common tags to merge into every resource. |

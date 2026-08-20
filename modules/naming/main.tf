@@ -17,6 +17,7 @@ locals {
   names = {
     resource_group = "rg-${local.base}"
     aks            = "aks-${local.base}"
+    vnet           = "vnet-${local.base}"
 
     # Trim the base, never the suffix - cutting the whole string eats the random
     # part and can leave a trailing hyphen, which Azure rejects.

@@ -1,9 +1,17 @@
 name: terraform iac
 
 on:
+  # Only Terraform changes need a plan. Editing the README should not touch Azure.
+  # The workflow file is included so a pipeline change gets verified too.
   pull_request:
+    paths:
+      - 'environment/**'
+      - '.github/workflows/**'
   push:
     branches: [env/dev]
+    paths:
+      - 'environment/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:

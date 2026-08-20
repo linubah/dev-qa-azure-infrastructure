@@ -3,7 +3,7 @@ locals {
 }
 
 module "naming" {
-  source = "git::https://github.com/linubah/dev-qa-azure-infrastructure.git//modules/naming?ref=v1.0.0"
+  source = "git::https://github.com/linubah/dev-qa-azure-infrastructure.git//modules/naming?ref=v1.1.0"
 
   brand         = var.brand
   environment   = var.environment
@@ -14,7 +14,7 @@ module "naming" {
 }
 
 module "resource_group" {
-  source = "git::https://github.com/linubah/dev-qa-azure-infrastructure.git//modules/resource_group?ref=v1.0.0"
+  source = "git::https://github.com/linubah/dev-qa-azure-infrastructure.git//modules/resource_group?ref=v1.1.0"
 
   name     = module.naming.resource_group
   location = var.location
@@ -22,7 +22,7 @@ module "resource_group" {
 }
 
 module "key_vault" {
-  source = "git::https://github.com/linubah/dev-qa-azure-infrastructure.git//modules/key_vault?ref=v1.0.0"
+  source = "git::https://github.com/linubah/dev-qa-azure-infrastructure.git//modules/key_vault?ref=v1.1.0"
 
   name                = module.naming.key_vault
   resource_group_name = module.resource_group.name

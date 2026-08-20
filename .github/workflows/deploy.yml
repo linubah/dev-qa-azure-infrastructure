@@ -1,0 +1,21 @@
+name: terraform iac
+
+on:
+  pull_request:
+  push:
+    branches: [env/qa]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  terraform:
+    uses: linubah/dev-qa-azure-infrastructure/.github/workflows/terraform.yml@main
+    with:
+      environment: qa
+      var_file: qa.tfvars
+      plan_client_id: ${{ vars.AZURE_CLIENT_ID_QA }}
+      apply: ${{ github.event_name != 'pull_request' }}

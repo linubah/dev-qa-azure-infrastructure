@@ -16,3 +16,6 @@ override.tf.json
 *_override.tf.json
 
 .DS_Store
+
+# Local scratch space - task notes, throwaway files.
+temp/

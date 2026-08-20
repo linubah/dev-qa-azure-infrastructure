@@ -1,14 +1,3 @@
-variable "subscription_id" {
-  description = "Target Azure subscription."
-  type        = string
-}
-
-variable "use_oidc" {
-  description = "Use workload identity federation. False for a local az login."
-  type        = bool
-  default     = false
-}
-
 # --- naming ---
 
 variable "brand" {

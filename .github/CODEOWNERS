@@ -1,7 +1,2 @@
+# Read from the branch a pull request targets.
 * @linubah
-
-/.github/workflows/ @linubah
-
-/modules/ @linubah
-
-/scripts/ @linubah

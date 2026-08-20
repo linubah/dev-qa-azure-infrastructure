@@ -22,3 +22,6 @@ modules/**/.terraform.lock.hcl
 .DS_Store
 *.bak
 /temp
+
+# Local scratch space - task notes, throwaway files.
+temp/

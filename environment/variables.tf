@@ -60,6 +60,18 @@ variable "allowed_ip_ranges" {
 
 # --- aks (optional) ---
 
+variable "vnet_address_space" {
+  description = "VNet range. Kept off 10.0.0.0/16 so it cannot clash with the AKS service_cidr."
+  type        = list(string)
+  default     = ["10.10.0.0/16"]
+}
+
+variable "aks_subnet_prefix" {
+  description = "Subnet for AKS node NICs."
+  type        = string
+  default     = "10.10.1.0/24"
+}
+
 variable "aks_enabled" {
   description = "Deploy the AKS cluster. Off by default - a free subscription's 4 vCPU quota fits one node."
   type        = bool

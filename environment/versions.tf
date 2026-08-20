@@ -26,8 +26,6 @@ provider "azurerm" {
       prevent_deletion_if_contains_resources = true
     }
   }
-
-  subscription_id     = var.subscription_id
-  use_oidc            = var.use_oidc
+  
   storage_use_azuread = true
 }
